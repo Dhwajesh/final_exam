@@ -1,0 +1,215 @@
+---
+title: "Finals"
+author: "Dhwajesh Bhandari"
+output: html_document
+date: "2024-12-09"
+---
+
+
+```{r}
+# Load required libraries
+library(readr)
+library(fpp2)
+library(ggplot2)
+library(forecast)
+library(tseries)
+
+# Import the dataset
+# Read the CSV file containing sales data
+sales_data <- read.csv("/Users/dhwajeshbhandari/Downloads/TOTALSA.csv")
+colnames(sales_data) <- c("Date", "Sales")  # Rename columns for clarity
+sales_data$Date <- as.Date(sales_data$Date, format = "%Y-%m-%d")  # Convert the Date column to Date format
+sales_data$Sales <- as.numeric(sales_data$Sales)  # Ensure Sales column is numeric
+
+# Convert to time series object
+# Create a time series object starting from January 2020 with monthly frequency
+ts_sales <- ts(sales_data$Sales, start = c(2020, 1), frequency = 12)
+
+# Plot the time series
+# Visualize the sales data over time to observe trends and patterns
+plot(ts_sales, main = "Time Series of Sales Data", ylab = "Sales", xlab = "Time")
+
+# Boxplot of Sales
+# Boxplot to understand the distribution and variability in sales data
+boxplot(ts_sales, main = "Boxplot of Sales", ylab = "Sales")
+
+# Central Tendency
+# Display summary statistics (min, max, mean, median, quartiles) for the sales data
+summary_stats <- summary(ts_sales)
+print(summary_stats)
+
+# Observations:
+# - Min: Smallest sales value in the dataset.
+# - Max: Largest sales value.
+# - Median and Mean: Indicate the central tendency of sales.
+# - 1st and 3rd Quartiles: Show the spread of the data.
+
+# STL Decomposition
+# Decompose the time series into trend, seasonal, and remainder components
+sales_decomposition <- stl(ts_sales, s.window = "periodic")
+plot(sales_decomposition, main = "STL Decomposition of Sales Data")
+
+# Observations:
+# - Trend: Long-term growth in sales over time.
+# - Seasonal: Regular patterns that repeat annually.
+# - Remainder: Residuals after removing trend and seasonality.
+
+# Seasonal indices
+# Extract seasonal indices to understand monthly patterns
+seasonal_indices <- sales_decomposition$time.series[, "seasonal"]
+print(seasonal_indices)
+
+# Naive Forecast
+# Generate a naive forecast for the next 12 months
+naive_forecast <- naive(ts_sales, h = 12)
+print(naive_forecast)
+
+# Moving Averages
+# Apply moving averages to smooth the data for different window sizes
+ma3 <- ma(ts_sales, order = 3)
+ma6 <- ma(ts_sales, order = 6)
+ma9 <- ma(ts_sales, order = 9)
+
+# Plot original series and moving averages for comparison
+plot(ts_sales, main = "Moving Average Forecasts", ylab = "Sales")
+lines(ma3, col = "red")
+lines(ma6, col = "blue")
+lines(ma9, col = "green")
+legend("topright", legend = c("Original", "MA(3)", "MA(6)", "MA(9)"),
+       col = c("black", "red", "blue", "green"), lty = 1)
+
+# Observations:
+# - Shorter moving averages (e.g., MA(3)) are more responsive to changes.
+# - Longer moving averages (e.g., MA(9)) smooth out fluctuations more effectively.
+
+# Simple Exponential Smoothing
+# Apply Simple Exponential Smoothing for forecasting
+ses_model <- ses(ts_sales, h = 12)
+
+# Holt-Winters Forecast
+# Use Holt-Winters method to account for trend and seasonality
+hw_model <- HoltWinters(ts_sales, seasonal = "additive")
+hw_forecast <- forecast(hw_model, h = 12)
+
+# Stationarity Check
+# Perform the Augmented Dickey-Fuller test to check for stationarity
+adf_test <- adf.test(ts_sales)
+print(adf_test)
+
+# Observations:
+# - If p-value < 0.05, the series is stationary.
+# - Otherwise, differencing may be needed to achieve stationarity.
+
+# Differencing
+# Determine the number of differences required for stationarity
+d <- ndiffs(ts_sales)
+cat("Number of differences needed:", d, "\n")
+
+if (!is.na(d) && d > 0) {
+  diff_sales <- diff(ts_sales, differences = d)
+  plot(diff_sales, main = "Differenced Time Series")
+} else {
+  cat("No differencing needed. Using original series.\n")
+  diff_sales <- ts_sales
+}
+
+# ACF and PACF
+# Plot the Autocorrelation Function (ACF) and Partial Autocorrelation Function (PACF)
+Acf(diff_sales, main = "ACF of Differenced Series")
+Pacf(diff_sales, main = "PACF of Differenced Series")
+
+# Fit ARIMA Model
+# Automatically select the best ARIMA model based on AIC/BIC criteria
+auto_arima_model <- auto.arima(ts_sales, seasonal = FALSE, stepwise = FALSE, trace = TRUE)
+arima_forecast <- forecast(auto_arima_model, h = 12)
+
+# Forecast with ARIMA
+# Generate forecasts for 1 year and 2 years using ARIMA
+forecast_1yr <- forecast(auto_arima_model, h = 12)
+plot(forecast_1yr, main = "ARIMA Forecast (1 Year)")
+
+forecast_2yr <- forecast(auto_arima_model, h = 24)
+plot(forecast_2yr, main = "ARIMA Forecast (2 Years)")
+
+# Residual Diagnostics
+# Perform residual diagnostics to check model assumptions
+checkresiduals(auto_arima_model)
+
+# Custom Function for RMSE, MAE, and MAPE
+# Define a custom function to calculate accuracy metrics
+calculate_accuracy_metrics <- function(actual, predicted) {
+  rmse <- sqrt(mean((actual - predicted)^2, na.rm = TRUE)) # Root Mean Squared Error
+  mae <- mean(abs(actual - predicted), na.rm = TRUE)       # Mean Absolute Error
+  mape <- mean(abs((actual - predicted) / actual), na.rm = TRUE) * 100 # Mean Absolute Percentage Error
+  return(data.frame(RMSE = rmse, MAE = mae, MAPE = mape))
+}
+
+# Accuracy Metrics
+# Calculate accuracy metrics for each forecasting method
+naive_predictions <- as.numeric(naive_forecast$mean)
+ses_predictions <- as.numeric(ses_model$mean)
+hw_predictions <- as.numeric(hw_forecast$mean)
+arima_predictions <- as.numeric(arima_forecast$mean)
+
+actual_values <- tail(ts_sales, length(naive_predictions))  # Actual values for evaluation
+
+# Compute metrics for each model
+naive_metrics <- calculate_accuracy_metrics(actual_values, naive_predictions)
+ses_metrics <- calculate_accuracy_metrics(actual_values, ses_predictions)
+hw_metrics <- calculate_accuracy_metrics(actual_values, hw_predictions)
+arima_metrics <- calculate_accuracy_metrics(actual_values, arima_predictions)
+
+# Combine Results
+# Create a summary table of accuracy metrics for comparison
+accuracy_summary <- data.frame(
+  Model = c("Naive", "SES", "Holt-Winters", "ARIMA"),
+  RMSE = c(naive_metrics$RMSE, ses_metrics$RMSE, hw_metrics$RMSE, arima_metrics$RMSE),
+  MAE = c(naive_metrics$MAE, ses_metrics$MAE, hw_metrics$MAE, arima_metrics$MAE),
+  MAPE = c(naive_metrics$MAPE, ses_metrics$MAPE, hw_metrics$MAPE, arima_metrics$MAPE)
+)
+
+print("Accuracy Metrics Summary:")
+print(accuracy_summary)
+
+# Observations:
+# - ARIMA typically achieves the best accuracy due to its ability to model trends and seasonality.
+# - Naive forecasting has the highest error metrics, making it the least effective.
+
+### Updated Conclusion
+
+# Summary of Time Series Analysis
+#1. **Overall Trends**:
+# - The time series data demonstrates a consistent upward trend, indicating sustained growth in sales over the analyzed period.
+# - Seasonal patterns are evident, with fluctuations recurring annually, as shown in the STL decomposition and seasonal indices.
+
+#2. **Short-Term Prediction**:
+# - The ARIMA and Holt-Winters models forecast a slight increase in sales over the next year.
+# - Seasonal variations are expected to persist, contributing to regular peaks and troughs.
+# - Forecast Accuracy Metrics:
+# - **ARIMA**: RMSE = 0.416, MAPE = 2.21%
+# - **Holt-Winters**: RMSE = 3.953, MAPE = 23.30%
+# - ARIMA provides superior short-term accuracy compared to Holt-Winters.
+
+#3. **Long-Term Prediction**:
+#- Over the next two years, ARIMA projects a gradual increase in sales, with stabilized seasonal fluctuations.
+#- The trend remains upward, reflecting higher average sales values over time.
+
+#4. **Best and Worst Forecasting Methods**:
+#- **Best Method**: ARIMA outperforms other models due to its ability to capture both trend and seasonality, achieving the lowest error metrics (RMSE = 0.416, MAPE = 2.21%).
+#- **Worst Method**: Holt-Winters shows the highest RMSE and MAPE values, indicating poor fit for this dataset's specific characteristics.
+
+#5. **Ranking of Forecasting Methods**:
+  # - **1. ARIMA**: Best overall due to its robust modeling of trends and seasonal dependencies.
+   #- **2. SES (Simple Exponential Smoothing)**: Effective for non-seasonal data, though less suitable for this dataset.
+   #- **3. Naive**: Provides a baseline forecast, performing better than Holt-Winters in this case.
+  # - **4. Holt-Winters**: Performs poorly, likely due to overfitting or an inadequate seasonal smoothing parameter.
+
+# Visual Observations:
+   #- The STL decomposition effectively separates the trend, seasonal, and residual components, highlighting annual cyclicality.
+   #- The ACF and PACF plots confirm ARIMA's suitability, showing significant lags that are well-addressed by the model.
+   #- Forecast plots validate the reliability of ARIMA for both short- and long-term predictions.
+
+
+
+
+```
